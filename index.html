@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YoRHaBunker OS - Arch Linux Tactical Terminal</title>
+    <style>
+        :root {
+            --bg-color: #c8c5ae;
+            --panel-bg: #beba9f;
+            --text-main: #3a382e;
+            --text-dark: #1b1a15;
+            --accent-dark: #323026;
+            --glitch-red: #8f3131;
+            --border-color: #4a483a;
+            --term-bg: #141412;
+            --term-fg: #c8c5ae;
+            --term-prompt: #788a74;
+            --arch-blue: #7ba2c7;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Courier New', Courier, monospace;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        /* Scanline Overlay Effect for CRT/Game HUD feel */
+        body::before {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.05) 50%);
+            background-size: 100% 4px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .system-frame {
+            width: 100%;
+            max-width: 960px;
+            border: 2px solid var(--border-color);
+            background-color: var(--panel-bg);
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            letter-spacing: 3px;
+            color: var(--text-dark);
+        }
+
+        .header-sub {
+            font-size: 0.8rem;
+            letter-spacing: 1.5px;
+            color: var(--border-color);
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 230px 1fr;
+            gap: 20px;
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nav-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-dark);
+            padding: 12px 15px;
+            text-align: left;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            letter-spacing: 1px;
+        }
+
+        .nav-btn:hover, .nav-btn.active {
+            background-color: var(--accent-dark);
+            color: var(--bg-color);
+            padding-left: 22px;
+        }
+
+        .nav-btn.active::before {
+            content: '■ ';
+            color: var(--glitch-red);
+        }
+
+        .content-area {
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.12);
+            min-height: 450px;
+        }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.2s ease-in-out;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+            letter-spacing: 1.5px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px dotted var(--border-color);
+            font-size: 0.9rem;
+        }
+
+        .warning-text {
+            color: var(--glitch-red);
+            font-weight: bold;
+        }
+
+        /* Arch Terminal Styling */
+        .terminal-container {
+            background-color: var(--term-bg);
+            color: var(--term-fg);
+            border: 2px solid var(--border-color);
+            padding: 15px;
+            font-size: 0.85rem;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', Courier, monospace;
+            cursor: text;
+            position: relative;
+        }
+
+        .terminal-output {
+            white-space: pre-wrap;
+            line-height: 1.35;
+        }
+
+        .terminal-input-line {
+            display: flex;
+            align-items: center;
+            margin-top: 6px;
+        }
+
+        .prompt {
+            color: var(--term-prompt);
+            font-weight: bold;
+            margin-right: 8px;
+            white-space: nowrap;
+        }
+
+        .term-input {
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: inherit;
+            width: 100%;
+            outline: none;
+            user-select: text;
+        }
+
+        /* Cursor blinking animation */
+        .term-input::after {
+            content: '█';
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Fastfetch Container with Dual ASCII Logos */
+        .fastfetch-container {
+            display: flex;
+            gap: 25px;
+            margin: 12px 0;
+            align-items: flex-start;
+        }
+
+        .fastfetch-logo {
+            color: #d1ceb8;
+            font-weight: bold;
+            line-height: 1.15;
+            white-space: pre;
+            font-size: 0.8rem;
+        }
+
+        .fastfetch-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .ff-key {
+            color: #beba9f;
+            font-weight: bold;
+        }
+
+        .ff-val {
+            color: #ffffff;
+        }
+
+        /* Progress Bar Animation */
+        .progress-bar-container {
+            width: 100%;
+            background-color: #2a2a24;
+            border: 1px solid var(--border-color);
+            height: 14px;
+            margin: 8px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--term-prompt);
+            width: 0%;
+            transition: width 0.05s linear;
+        }
+
+        .action-bar {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            background-color: var(--border-color);
+            color: var(--bg-color);
+            border: none;
+            padding: 7px 14px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.78rem;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .action-btn:hover {
+            background-color: var(--text-dark);
+            color: #ffffff;
+        }
+
+        .system-footer {
+            margin-top: 20px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--border-color);
+        }
+
+        /* Official YoRHa Vector Crest Styling */
+        .yorha-vector-logo {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="system-frame">
+    <div class="top-bar">
+        <div>
+            <div class="header-title">YoRHaBunker OS</div>
+            <div class="header-sub">ARCH LINUX KERNEL // TACTICAL INFANTRY NETWORK</div>
+        </div>
+        <div class="header-sub">STATUS: OPERATIONAL</div>
+    </div>
+
+    <div class="main-layout">
+        <div class="nav-menu">
+            <button class="nav-btn" onclick="switchTab('tab-status', event)">01. UNIT STATUS</button>
+            <button class="nav-btn" onclick="switchTab('tab-weapons', event)">02. WEAPONRY</button>
+            <button class="nav-btn" onclick="switchTab('tab-pod', event)">03. SUPPORT POD 042</button>
+            <button class="nav-btn active" onclick="switchTab('tab-logs', event)">04. TERMINAL SHELL</button>
+        </div>
+
+        <div class="content-area">
+
+            <!-- Unit Status -->
+            <div id="tab-status" class="tab-panel">
+                <div class="yorha-vector-logo">
+                    <!-- Pure SVG Official YoRHa Emblem Replica -->
+                    <svg width="220" height="90" viewBox="0 0 220 90">
+                        <rect x="5" y="5" width="210" height="80" fill="none" stroke="#4a483a" stroke-width="2"/>
+                        <circle cx="110" cy="45" r="30" fill="none" stroke="#323026" stroke-width="2"/>
+                        <circle cx="110" cy="45" r="22" fill="none" stroke="#8f3131" stroke-width="1.5"/>
+                        <polygon points="110,20 120,40 100,40" fill="#323026"/>
+                        <polygon points="110,70 120,50 100,50" fill="#323026"/>
+                        <line x1="75" y1="45" x2="145" y2="45" stroke="#323026" stroke-width="2"/>
+                        <text x="110" y="81" font-size="8" text-anchor="middle" fill="#1b1a15" font-weight="bold" letter-spacing="2">YoRHa COMMAND</text>
+                    </svg>
+                </div>
+                <h2>Operational Status</h2>
+                <div class="data-row"><span>Host System:</span><span>YoRHaBunker Terminal</span></div>
+                <div class="data-row"><span>Designation:</span><span>YoRHa No.2 Type B</span></div>
+                <div class="data-row"><span>OS Kernel:</span><span>Linux 6.10.4-arch1-1-yorha</span></div>
+                <div class="data-row"><span>Frame Integrity:</span><span>100% (Nominal)</span></div>
+                <div class="data-row"><span>Memory Status:</span><span class="warning-text">Synced with Bunker</span></div>
+            </div>
+
+            <!-- Weaponry -->
+            <div id="tab-weapons" class="tab-panel">
+                <h2>Equipment & Tactical Loadout</h2>
+                <div class="data-row"><span>Primary Weapon:</span><span>Virtuous Contract (Small Sword)</span></div>
+                <div class="data-row"><span>Secondary Weapon:</span><span>Virtuous Treaty (Large Sword)</span></div>
+            </div>
+
+            <!-- Pod Support -->
+            <div id="tab-pod" class="tab-panel">
+                <h2>Tactical Support Unit 042</h2>
+                <div class="data-row"><span>Model:</span><span>Pod 042</span></div>
+                <div class="data-row"><span>Firewall:</span><span>Active / Tactical Mesh</span></div>
+            </div>
+
+            <!-- Terminal Panel with Arch Linux Shell and YoRHa Fastfetch -->
+            <div id="tab-logs" class="tab-panel active">
+                <h2>Arch Linux Shell (YoRHaBunker Edition)</h2>
+                <div class="terminal-container" id="terminal-box" onclick="focusInput()">
+                    <div class="terminal-output" id="term-output">YoRHaBunker Arch Linux Kernel 6.10.4-arch1-1-yorha (tty1)
+
+Type 'fastfetch' for system specs or 'help' for command list.
+Try interactive Arch commands: 'pacman -Syu', 'htop', 'ls -la', 'uname -a', 'clear'...
+----------------------------------------------------------------------</div>
+                    <div class="terminal-input-line">
+                        <span class="prompt">[2b@YoRHaBunker ~]$</span>
+                        <input type="text" class="term-input" id="term-input" autocomplete="off" spellcheck="false" onkeydown="handleCommand(event)">
+                    </div>
+                </div>
+
+                <div class="action-bar">
+                    <button class="action-btn" onclick="runQuickCmd('fastfetch')">fastfetch</button>
+                    <button class="action-btn" onclick="runQuickCmd('pacman -Syu')">pacman -Syu</button>
+                    <button class="action-btn" onclick="runQuickCmd('htop')">htop</button>
+                    <button class="action-btn" onclick="runQuickCmd('ls -la')">ls -la</button>
+                    <button class="action-btn" onclick="runQuickCmd('clear')">clear</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="system-footer">
+        <span>FOR THE GLORY OF MANKIND</span>
+        <span>YoRHaBunker SYSTEM ARCH v6.10</span>
+    </div>
+</div>
+
+<script>
+    let isExecuting = false;
+
+    function switchTab(tabId, event) {
+        document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+
+        document.getElementById(tabId).classList.add('active');
+        event.currentTarget.classList.add('active');
+    }
+
+    function focusInput() {
+        document.getElementById('term-input').focus();
+    }
+
+    /* Fastfetch with Official ASCII Crest & Arch Logo */
+    const fastfetchOutput = `<div class="fastfetch-container">
+<div class="fastfetch-logo">
+      /\         ██╗██╗   ██╗██████╗ ██╗██╗  ██╗██████╗
+     /  \        ╚██╗██║   ██║██╔══██╗██║██║  ██║██╔══██╗
+    /\   \        ╚████║   ██║██████╔╝██║███████║██████╔╝
+   /      \        ╚██╔╝   ██║██╔══██╗██║██╔══██║██╔══██╗
+  /   ,,   \        ██║    ╚██████╔╝██║██║  ██║██║  ██║
+ /   |  |  -\       ╚═╝     ╚═════╝ ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
+/_-''    ''-_\     [ YoRHa Military Automaton System ]
+</div>
+<div class="fastfetch-info">
+<div><span class="ff-key">2b</span>@<span class="ff-key">YoRHaBunker</span></div>
+<div>-------------------------------------</div>
+<div><span class="ff-key">OS:</span> <span class="ff-val">Arch Linux x86_64 (YoRHaBunker Core)</span></div>
+<div><span class="ff-key">Host:</span> <span class="ff-val">YoRHa No.2 Type B (Battler Unit)</span></div>
+<div><span class="ff-key">Kernel:</span> <span class="ff-val">6.10.4-arch1-1-yorha</span></div>
+<div><span class="ff-key">Uptime:</span> <span class="ff-val">102 days, 14 hours, 45 mins</span></div>
+<div><span class="ff-key">Packages:</span> <span class="ff-val">2042 (pacman)</span></div>
+<div><span class="ff-key">Shell:</span> <span class="ff-val">zsh 5.9 (yorha-theme)</span></div>
+<div><span class="ff-key">WM:</span> <span class="ff-val">Bunker-HUD / Wayland</span></div>
+<div><span class="ff-key">Terminal:</span> <span class="ff-val">Pod-042-Term</span></div>
+<div><span class="ff-key">CPU:</span> <span class="ff-val">YoRHa Black Box Core @ 4.20GHz</span></div>
+<div><span class="ff-key">GPU:</span> <span class="ff-val">Tactical Visual Processor v2.0</span></div>
+<div><span class="ff-key">Memory:</span> <span class="ff-val">3420MiB / 16384MiB</span></div>
+</div>
+</div>`;
+
+    function handleCommand(e) {
+        if (e.key === 'Enter' && !isExecuting) {
+            const inputEl = document.getElementById('term-input');
+            const cmd = inputEl.value.trim();
+            executeCmd(cmd);
+            inputEl.value = '';
+        }
+    }
+
+    function runQuickCmd(cmd) {
+        if (!isExecuting) executeCmd(cmd);
+    }
+
+    function appendOutput(htmlContent) {
+        const output = document.getElementById('term-output');
+        output.innerHTML += htmlContent;
+        const termBox = document.getElementById('terminal-box');
+        termBox.scrollTop = termBox.scrollHeight;
+    }
+
+    function executeCmd(cmd) {
+        const promptStr = '[2b@YoRHaBunker ~]$ ' + cmd;
+
+        if (cmd.toLowerCase() === 'clear') {
+            document.getElementById('term-output').innerHTML = '';
+            return;
+        }
+
+        appendOutput(`\n<div><span style="color:#788a74;font-weight:bold;">${promptStr}</span></div>`);
+
+        const lowerCmd = cmd.toLowerCase();
+
+        if (lowerCmd === 'fastfetch' || lowerCmd === 'neofetch') {
+            appendOutput(fastfetchOutput);
+        } else if (lowerCmd === 'pacman -syu') {
+            simulatePacman();
+        } else if (lowerCmd === 'htop') {
+            simulateHtop();
+        } else if (lowerCmd === 'ls' || lowerCmd === 'ls -la' || lowerCmd === 'ls -l') {
+            appendOutput(`<div>drwxr-xr-x 4 2b yorha 4096 Sep  8 11:10 .
+drwxr-xr-x 3 2b yorha 4096 Sep  8 11:10 ..
+-rw-r--r-- 1 2b yorha  512 Sep  8 11:10 combat_logs.txt
+-rw-r--r-- 1 2b yorha 2048 Sep  8 11:10 virtuous_contract.dat
+-rwxr-xr-x 1 2b yorha 8192 Sep  8 11:10 pod042_interface.sh
+-rw------- 1 2b yorha 1024 Sep  8 11:10 .directive_e.key [CLASSIFIED]</div>`);
+        } else if (lowerCmd === 'uname -a') {
+            appendOutput('<div>Linux YoRHaBunker 6.10.4-arch1-1-yorha #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux</div>');
+        } else if (lowerCmd === 'whoami') {
+            appendOutput('<div>2b (YoRHa Unit No.2 Type B - Clearance Level 1)</div>');
+        } else if (lowerCmd === 'help') {
+            appendOutput(`<div>Available Commands:
+- fastfetch / neofetch : Displays YoRHaBunker specs and ASCII emblem
+- pacman -Syu          : Simulated Arch Linux package manager upgrade animation
+- htop                 : Live interactive process viewer simulation
+- ls -la               : List directory files and system permissions
+- uname -a             : Display Kernel release specs
+- whoami               : Show active user details
+- clear                : Clear terminal screen</div>`);
+        } else if (cmd === '') {
+            // Empty command
+        } else {
+            appendOutput(`<div>zsh: command not found: ${cmd}. Type 'help' for available commands.</div>`);
+        }
+    }
+
+    /* Animated pacman -Syu Simulation */
+    function simulatePacman() {
+        isExecuting = true;
+        appendOutput(`<div>:: Synchronizing package databases...
+ core is up to date
+ extra is up to date
+ yorha-bunker-repo is up to date
+:: Starting full system upgrade...
+ resolving dependencies...
+ look for conflicting packages...
+
+Packages (3) combat-module-2.1  pod042-firmware-4.0  blackbox-kernel-6.10
+
+Total Download Size:    142.50 MiB
+Total Installed Size:   412.00 MiB
+
+:: Proceed with installation? [Y/n] Y</div>
+<div id="pacman-progress-container">
+    <div>(1/3) upgrading combat-module...</div>
+    <div class="progress-bar-container"><div class="progress-bar-fill" id="p-fill"></div></div>
+</div>`);
+
+        let progress = 0;
+        const fill = document.getElementById('p-fill');
+        const interval = setInterval(() => {
+            progress += 5;
+            if (fill) fill.style.width = progress + '%';
+            if (progress >= 100) {
+                clearInterval(interval);
+                document.getElementById('pacman-progress-container').removeAttribute('id');
+                appendOutput(`<div>(2/3) upgrading pod042-firmware [======================] 100%
+(3/3) upgrading blackbox-kernel [======================] 100%
+:: System upgrade complete. YoRHaBunker system nominal.</div>`);
+                isExecuting = false;
+            }
+        }, 60);
+    }
+
+    /* Animated htop Simulation */
+    function simulateHtop() {
+        isExecuting = true;
+        const htopHtml = `<div>
+  1  [████████████████████████████████████████100.0%] Tasks: 42, 188 thr; 1 running
+  2  [████████████████████████                  52.1%] Load average: 0.42 0.38 0.21
+  Mem[████████████████                         3.4G/16.0G] Uptime: 102 days, 14:45:10
+  Swp[                                           0K/4.0G]
+
+  PID USER      PRI  NI  VIRT   RES   SHR S CPU% MEM%   TIME+  Command
+ 1042 2b         20   0  1.2G  320M  112M S  12.4  2.0  48:12.0 Pod042Daemon
+ 2042 2b         20   0  2.1G  512M  210M S   8.2  3.2  112:04.2 BlackBoxEngine
+ 3001 2b         20   0  420M   84M   42M R   4.1  0.5   0:01.1 htop
+ 4112 2b         20   0  890M  120M   65M S   0.0  0.7   5:12.0 TacticalHUD
+[Press Any Key or Clear to Exit HTOP Simulation]</div>`;
+        appendOutput(htopHtml);
+        isExecuting = false;
+    }
+</script>
+
+</body>
+</html>
